@@ -4,12 +4,94 @@ from rest_framework.authentication import TokenAuthentication
 from rest_framework.decorators import permission_classes, authentication_classes
 from rest_framework.permissions import AllowAny
 from django.shortcuts import render
+from rest_framework.permissions import IsAuthenticated
+from rest_framework.authentication import TokenAuthentication
+from rest_framework.decorators import permission_classes, authentication_classes
+from rest_framework.permissions import AllowAny
+from django.shortcuts import render
 from django.utils import timezone
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework.decorators import api_view
 from rest_framework import status
+from applications.academic_information.models import Student
+from applications.programme_curriculum.models import Course as Courses, CourseInstructor
+from applications.academic_procedures.models import course_registration
+from applications.globals.models import ExtraInfo
+from rest_framework.permissions import IsAuthenticated
+from applications.online_cms.models import  Student_grades
+from .serializers import StudentGradesSerializer
+import datetime
+from rest_framework import status
 from .serializers import *
+
+@api_view(['POST'])
+def add_module(request):
+    # Extract data from the request
+    course_id = request.data.get('course_id')
+    module_name = request.data.get('module_name')
+
+    # Ensure the course exists
+    try:
+        course = Courses.objects.get(id=course_id)
+    except Courses.DoesNotExist:
+        return Response({"error": "Course not found"}, status=status.HTTP_404_NOT_FOUND)
+
+    # Create the module
+    module = Modules.objects.create(module_name=module_name, course=course)
+
+    # Serialize the module data and return
+    serializer = ModuleSerializer(module)
+    return Response(serializer.data, status=status.HTTP_201_CREATED)
+
+@api_view(['DELETE'])
+def delete_module(request, module_id):
+    try:
+        # Get the module by primary key
+        module = Modules.objects.get(pk=module_id)
+        module.delete()  # Delete the module
+        return Response(status=status.HTTP_204_NO_CONTENT)  # No content after deletion
+    except Modules.DoesNotExist:
+        return Response({"error": "Module not found"}, status=status.HTTP_404_NOT_FOUND)
+
+# Add a slide
+@api_view(['POST'])
+def add_slide(request, module_id):
+    try:
+        # Get the module using module_id from the URL
+        module = Modules.objects.get(id=module_id)
+    except Modules.DoesNotExist:
+        return Response({"error": "Module not found"}, status=status.HTTP_404_NOT_FOUND)
+
+    # Extract data from the request body
+    document_name = request.data.get('document_name')
+    document_url = request.data.get('document_url')
+    description = request.data.get('description', '')  # Default to an empty string if no description is provided
+
+    # Create a new CourseDocument for the slide
+    course_document = CourseDocuments.objects.create(
+        course_id=module.course,
+        module_id=module,
+        document_name=document_name,
+        document_url=document_url,
+        description=description
+    )
+
+    # Serialize the document data and return the response
+    serializer = CourseDocumentsSerializer(course_document)
+    return Response(serializer.data, status=status.HTTP_201_CREATED)
+
+# Delete a slide
+@api_view(['DELETE'])
+def delete_slide(request, slide_id):
+    try:
+        # Get the slide by primary key
+        slide = CourseDocuments.objects.get(pk=slide_id)
+        slide.delete()  # Delete the slide
+        return Response(status=status.HTTP_204_NO_CONTENT)  # No content after deletion
+    except CourseDocuments.DoesNotExist:
+        return Response({"error": "Slide not found"}, status=status.HTTP_404_NOT_FOUND)
+        
 from applications.academic_information.models import Student
 from applications.programme_curriculum.models import Course as Courses, CourseInstructor
 from applications.academic_procedures.models import course_registration

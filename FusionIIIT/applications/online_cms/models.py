@@ -5,7 +5,7 @@ from applications.globals.models import ExtraInfo
 
 class Modules(models.Model):
     module_name = models.CharField(max_length=50)
-    course_id = models.ForeignKey(Courses, on_delete=models.CASCADE)
+    course = models.ForeignKey(Courses, on_delete=models.CASCADE, db_column='course_id_id')
 
     def __str__(self):
         return self.module_name
