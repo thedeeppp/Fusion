@@ -21,9 +21,178 @@ from applications.globals.models import ExtraInfo
 from rest_framework.permissions import IsAuthenticated
 from applications.online_cms.models import  Student_grades
 from .serializers import StudentGradesSerializer
-import datetime
+from datetime import datetime
 from rest_framework import status
 from .serializers import *
+# from applications.online_cms
+import pandas as pd
+from rest_framework.parsers import MultiPartParser
+from rest_framework.decorators import api_view, parser_classes
+from django.http import JsonResponse
+from django.db import transaction
+from django.core.exceptions import ObjectDoesNotExist
+
+from applications.online_cms.models import Attendance
+
+@api_view(['POST'])
+@parser_classes([MultiPartParser])
+def upload_attendance(request):
+    if 'file' not in request.FILES:
+        return Response({
+            'error': 'No file was uploaded',
+            'required_columns': ['student_id', 'instructor_id', 'date', 'present', 'no_of_attendance']
+        }, status=status.HTTP_400_BAD_REQUEST)
+
+    file = request.FILES['file']
+    
+    if not file.name.endswith(('.xls', '.xlsx')):
+        return Response({
+            'error': 'Invalid file format. Please upload an Excel file (.xls or .xlsx)'
+        }, status=status.HTTP_400_BAD_REQUEST)
+
+    try:
+        df = pd.read_excel(file)
+        
+        required_columns = ['student_id', 'instructor_id', 'date', 'present', 'no_of_attendance']
+        missing_columns = [col for col in required_columns if col not in df.columns]
+        if missing_columns:
+            return Response({
+                'error': 'Missing required columns',
+                'missing_columns': missing_columns
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        successful_records = []
+        errors = []
+        
+        # Validate all records
+        for index, row in df.iterrows():
+            try:
+                # Validate date
+                try:
+                    attendance_date = pd.to_datetime(row['date']).date()
+                except Exception as e:
+                    errors.append({
+                        'row': index + 2,
+                        'error': f'Invalid date format: {row["date"]}'
+                    })
+                    continue
+
+                # Validate student
+                try:
+                    student = Student.objects.filter(id=str(row['student_id'])).first()
+                    if not student:
+                        errors.append({
+                            'row': index + 2,
+                            'error': f'Student with ID {row["student_id"]} does not exist'
+                        })
+                        continue
+                except Exception as e:
+                    errors.append({
+                        'row': index + 2,
+                        'error': f'Invalid student ID: {str(e)}'
+                    })
+                    continue
+
+                # Validate instructor
+                try:
+                    instructor = CourseInstructor.objects.filter(pk=int(row['instructor_id'])).first()
+                    if not instructor:
+                        errors.append({
+                            'row': index + 2,
+                            'error': f'Instructor with ID {row["instructor_id"]} does not exist'
+                        })
+                        continue
+                except Exception as e:
+                    errors.append({
+                        'row': index + 2,
+                        'error': f'Invalid instructor ID: {str(e)}'
+                    })
+                    continue
+
+                # Validate attendance values
+                try:
+                    present = int(row['present'])
+                    no_of_attendance = int(row['no_of_attendance'])
+                    
+                    if not (0 <= present <= no_of_attendance):
+                        errors.append({
+                            'row': index + 2,
+                            'error': 'Present value cannot be greater than no_of_attendance'
+                        })
+                        continue
+                except ValueError:
+                    errors.append({
+                        'row': index + 2,
+                        'error': 'Invalid present or no_of_attendance value'
+                    })
+                    continue
+
+                successful_records.append({
+                    'student': student,
+                    'instructor': instructor,
+                    'date': attendance_date,
+                    'present': present,
+                    'no_of_attendance': no_of_attendance,
+                    'row': index + 2
+                })
+
+            except Exception as e:
+                errors.append({
+                    'row': index + 2,
+                    'error': str(e)
+                })
+
+        # Create/update records for valid data
+        if successful_records:
+            try:
+                with transaction.atomic():
+                    for record in successful_records:
+                        attendance, created = Attendance.objects.update_or_create(
+                            student_id=record['student'],
+                            instructor_id=record['instructor'],
+                            date=record['date'],
+                            defaults={
+                                'present': record['present'],
+                                'no_of_attendance': record['no_of_attendance']
+                            }
+                        )
+            except Exception as e:
+                errors.append({
+                    'error': f'Database error: {str(e)}'
+                })
+                successful_records = []
+
+        response_data = {
+            'message': 'Attendance upload completed',
+            'total_records': len(df),
+            'successful_records': len(successful_records),
+            'failed_records': len(errors),
+            'successful_details': [
+                {
+                    'row': record['row'],
+                    'student_id': record['student'].id,
+                    'date': record['date']
+                } for record in successful_records
+            ]
+        }
+
+        if errors:
+            response_data['errors'] = errors
+            return Response(response_data, status=status.HTTP_207_MULTI_STATUS)
+        
+        return Response(response_data, status=status.HTTP_200_OK)
+
+    except Exception as e:
+        return Response({
+            'error': f'Error processing file: {str(e)}'
+        }, status=status.HTTP_400_BAD_REQUEST)
+    
+@api_view(['GET'])
+def view_attendance(request):
+    """Endpoint to view all attendance records."""
+    attendance_records = Attendance.objects.all()
+    serializer = AttendanceSerializer(attendance_records, many=True)
+    return Response(serializer.data, status=status.HTTP_200_OK)
 
 @api_view(['POST'])
 def add_module(request):
@@ -100,6 +269,7 @@ from rest_framework.permissions import IsAuthenticated
 from applications.online_cms.models import  Student_grades
 from .serializers import StudentGradesSerializer
 import datetime
+from rest_framework.parsers import MultiPartParser
 
 @api_view(['GET'])
 def courseview(request):

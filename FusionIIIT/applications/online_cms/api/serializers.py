@@ -66,10 +66,10 @@ class AssignmentSerializer(serializers.ModelSerializer):
         model = Assignment
         fields = '__all__'
 
-class AttendanceSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = Attendance
-        fields = '__all__'
+    class AttendanceSerializer(serializers.ModelSerializer):
+        class Meta:
+            model = Attendance
+            fields = '__all__'
 
 class ForumSerializer(serializers.ModelSerializer):
     class Meta:

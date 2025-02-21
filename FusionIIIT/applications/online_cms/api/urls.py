@@ -11,4 +11,6 @@ urlpatterns = [
     
     url(r'^slides/(?P<module_id>\d+)/add_document/$', views.add_slide, name='add_document'),
     url(r'^slides/delete/(?P<slide_id>\d+)/$', views.delete_slide, name='delete_document'),
+    url(r'^upload-attendance/', views.upload_attendance, name='upload_attendance'),
+    url(r'^view-attendance/', views.view_attendance, name='view_attendance'),
 ]
